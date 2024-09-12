@@ -134,6 +134,22 @@ pintos_init (void)
     run_actions (argv);
   } else {
     // TODO: no command line passed to kernel. Run interactively 
+    console_init();
+    input_init();
+    while(true){
+      char input[1024];
+      uint16_t i = 0;
+      putbuf("FOXOS> ", 7);  
+      while((input[i] = input_getc()) != '\r'){
+        putbuf(&input[i++], 1);
+      }
+      input[i] = '\0';
+      putbuf("\n", 1);
+
+      if(strcmp(input, "whoami") == 0) putbuf("AmagiSuki\n", 11);
+      else if(strcmp(input, "exit") == 0) break;
+      else putbuf("Invalid command :(\n", 20);
+    }
   }
 
   /* Finish up. */
