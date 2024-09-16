@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -23,6 +24,10 @@
 /** List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+
+/** List of sleeping processes in THREAD_BLOCKED state, processes
+   that call timer_sleep()*/
+static struct list sleeping_list;
 
 /** List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -91,6 +96,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
+  list_init (&sleeping_list);
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -133,6 +139,18 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
+
+  /** If ticks is up to sleep_end_time, then wake up thread in sleeping_list 
+   *  When 
+  */
+  while (!list_empty (&sleeping_list) 
+         && (t = list_entry (list_begin (&sleeping_list), struct thread, elem))->sleep_end_time == timer_ticks ())
+  {
+    list_pop_front (&sleeping_list);
+    t->sleep_end_time = INT64_MIN;
+    t->status = THREAD_READY;
+    list_push_back (&ready_list, &t->elem);
+  }
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
@@ -314,6 +332,32 @@ thread_yield (void)
   intr_set_level (old_level);
 }
 
+/** Sleep for TICKS timer ticks.  The current thread is put to sleeping list and
+ * wait until time is up.
+ */
+void
+thread_sleep (int64_t sleep_end_time)
+{
+
+  struct thread *cur = thread_current ();
+  enum intr_level old_level;
+  
+  ASSERT (!intr_context ());
+
+  old_level = intr_disable ();
+  if (cur != idle_thread)
+  {
+    // insert thread into sleeping list in order.
+    cur->sleep_end_time = sleep_end_time;
+    if (list_empty(&sleeping_list)) list_push_back (&sleeping_list, &cur->elem);
+    else list_insert_ordered (&sleeping_list, &cur->elem, less_sleep_end_time, NULL);
+    
+  }
+  cur->status = THREAD_BLOCKED;
+  schedule ();
+  intr_set_level (old_level);
+}
+
 /** Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
 void
@@ -375,6 +419,21 @@ thread_get_recent_cpu (void)
   /* Not yet implemented. */
   return 0;
 }
+
+/** Used to compare sleep_end_time of two threads.
+ *  If two threads have the same sleep_end_time, then compare priority.
+*/
+bool less_sleep_end_time(const struct list_elem *a,
+                         const struct list_elem *b,
+                         void *aux)
+{
+  struct thread *A = list_entry (a, struct thread, elem);
+  struct thread *B = list_entry (b, struct thread, elem);
+  ASSERT (is_thread(A)); 
+  ASSERT (is_thread(B)); 
+
+  return A->sleep_end_time < B->sleep_end_time;
+}                        
 
 /** Idle thread.  Executes when no other thread is ready to run.
 
@@ -462,6 +521,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->sleep_end_time = INT64_MIN;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

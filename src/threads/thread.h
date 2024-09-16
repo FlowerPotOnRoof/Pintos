@@ -93,6 +93,8 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /**< List element. */
 
+   /* Shared between thread.c and timer.c */
+   int64_t sleep_end_time;             /*< Time when sleeping thread wake up */
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /**< Page directory. */
@@ -125,6 +127,7 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+void thread_sleep (int64_t sleep_end_time);
 
 /** Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
@@ -137,5 +140,10 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+/** compare function for ordering list */
+bool less_sleep_end_time(const struct list_elem *a,
+                         const struct list_elem *b,
+                         void *aux);
 
 #endif /**< threads/thread.h */
